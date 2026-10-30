@@ -26,6 +26,7 @@ $taskReport=@{
     UnicodePathSmoke='passed';ActualCleanupDuringTests=$false;StartupRegisteredDuringTests=$false;
     OtherComputerTested=$false
 }
+if(Test-Path -LiteralPath build\compatibility-results.json){$taskReport['CompatibilityChecks']=(Get-Content -LiteralPath build\compatibility-results.json -Raw | ConvertFrom-Json).checks}
 $taskReport | ConvertTo-Json -Depth 4 | Out-File -LiteralPath tests\package-verification.json -Encoding utf8
 Copy-Item -LiteralPath build\preview.png -Destination tests\preview.png -Force
 Write-Output 'Release allowlist, hashes and extracted executable verified.'

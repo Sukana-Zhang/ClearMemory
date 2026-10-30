@@ -27,6 +27,9 @@ jobs:
       - name: Test without modifying system memory or startup
         shell: powershell
         run: .\test.ps1
+      - name: Check isolated startup task registration
+        shell: powershell
+        run: .\test-startup.ps1
       - name: Package and verify extracted program
         shell: powershell
         run: |

@@ -10,3 +10,7 @@ if($LASTEXITCODE){throw 'Standalone tests failed'}
 if($LASTEXITCODE){throw 'Native test compilation failed'}
 & .\build\NativeTests.exe
 if($LASTEXITCODE){throw 'Native API contract tests failed'}
+& $taskCompiler /nologo /codepage:65001 /main:CompatibilityTests /resource:assets\ClearMemory.ico,ClearMemory.ico /out:build\CompatibilityTests.exe @taskRefs src\*.cs tests\CompatibilityTests.cs
+if($LASTEXITCODE){throw 'Compatibility test compilation failed'}
+& .\build\CompatibilityTests.exe
+if($LASTEXITCODE){throw 'Compatibility tests failed'}
