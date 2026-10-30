@@ -1,5 +1,7 @@
 # ClearMemory
 
+[简体中文](README.md) | [English](README.en.md)
+
 **轻量、独立、可分享的 Windows 内存清理工具。**
 
 [![Windows build](https://github.com/Sukana-Zhang/ClearMemory/actions/workflows/build.yml/badge.svg)](https://github.com/Sukana-Zhang/ClearMemory/actions/workflows/build.yml)
