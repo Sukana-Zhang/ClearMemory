@@ -27,6 +27,7 @@ $taskReport=@{
     OtherComputerTested=$false
 }
 if(Test-Path -LiteralPath build\compatibility-results.json){$taskReport['CompatibilityChecks']=(Get-Content -LiteralPath build\compatibility-results.json -Raw | ConvertFrom-Json).checks}
+if(Test-Path -LiteralPath build\startup-diagnostics-results.json){$taskReport['StartupDiagnosticsChecks']=(Get-Content -LiteralPath build\startup-diagnostics-results.json -Raw | ConvertFrom-Json).checks}
 $taskReport | ConvertTo-Json -Depth 4 | Out-File -LiteralPath tests\package-verification.json -Encoding utf8
 Copy-Item -LiteralPath build\preview.png -Destination tests\preview.png -Force
 Write-Output 'Release allowlist, hashes and extracted executable verified.'

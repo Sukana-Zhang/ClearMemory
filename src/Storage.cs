@@ -36,8 +36,9 @@ namespace ClearMemory
                     if (File.Exists(archive)) File.Delete(archive);
                     File.Move(LogPath, archive);
                 }
-                File.AppendAllText(LogPath, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + text + Environment.NewLine, Encoding.UTF8);
+                File.AppendAllText(LogPath, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + Diagnostics.Redact(text) + Environment.NewLine, Encoding.UTF8);
             } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
+        public static void LogException(string stage,Exception error){Log(stage+" · "+error.GetType().FullName+" · HRESULT=0x"+unchecked((uint)error.HResult).ToString("X8")+Environment.NewLine+error);}
     }
 }

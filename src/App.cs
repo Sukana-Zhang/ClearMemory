@@ -8,8 +8,8 @@ using System.Threading;
 using System.Windows.Forms;
 
 [assembly:AssemblyTitle("ClearMemory · 内存清理")]
-[assembly:AssemblyVersion("1.0.1.0")]
-[assembly:AssemblyFileVersion("1.0.1.0")]
+[assembly:AssemblyVersion("1.0.2.0")]
+[assembly:AssemblyFileVersion("1.0.2.0")]
 namespace ClearMemory {
     public sealed class MainWindow:Form {
         readonly Engine engine;
@@ -17,7 +17,7 @@ namespace ClearMemory {
         readonly TextBox detail=new TextBox();
         readonly CheckBox timerEnabled=new CheckBox(),thresholdEnabled=new CheckBox(),startup=new CheckBox();
         readonly NumericUpDown minutes=new NumericUpDown(),threshold=new NumericUpDown();
-        readonly Button clean=new Button(),pause=new Button(),save=new Button();
+        readonly Button clean=new Button(),pause=new Button(),save=new Button(),export=new Button();
         bool syncing;public bool AllowExit;public readonly bool Preview;
         readonly System.Windows.Forms.Timer poll=new System.Windows.Forms.Timer{Interval=1000};
         public MainWindow(Engine engine,bool preview=false){
@@ -46,8 +46,9 @@ namespace ClearMemory {
             startup.Text="登录 Windows 后启动";startup.AutoSize=true;startup.Anchor=AnchorStyles.Left;settings.Controls.Add(startup,0,2);settings.SetColumnSpan(startup,2);
             root.Controls.Add(settings,0,2);
             var buttons=new FlowLayoutPanel{Dock=DockStyle.Fill,WrapContents=false};
-            foreach(var b in new[]{clean,pause,save}){b.Size=new Size(145,36);b.FlatStyle=FlatStyle.Flat;b.Margin=new Padding(0,0,12,0);buttons.Controls.Add(b);}
+            foreach(var b in new[]{clean,pause,save,export}){b.Size=new Size(136,36);b.FlatStyle=FlatStyle.Flat;b.Margin=new Padding(0,0,10,0);buttons.Controls.Add(b);}
             clean.Text="立即清理";clean.BackColor=Color.FromArgb(38,139,123);clean.ForeColor=Color.White;pause.Text="暂停自动清理";save.Text="保存设置";root.Controls.Add(buttons,0,3);
+            export.Text="导出日志";export.Click+=(s,e)=>ExportDiagnostics();
             status.Dock=DockStyle.Fill;status.AutoEllipsis=true;status.Padding=new Padding(0,8,0,0);root.Controls.Add(status,0,4);
             detail.Dock=DockStyle.Fill;detail.Multiline=true;detail.ReadOnly=true;detail.ScrollBars=ScrollBars.Vertical;detail.BackColor=Color.White;detail.BorderStyle=BorderStyle.FixedSingle;root.Controls.Add(detail,0,5);
             root.Controls.Add(new Label{Text="关闭窗口后在托盘运行 · 全系统清理可能造成切换程序时短暂卡顿",AutoSize=false,Dock=DockStyle.Fill,ForeColor=Color.FromArgb(90,107,130),TextAlign=ContentAlignment.MiddleLeft},0,6);
@@ -55,12 +56,12 @@ namespace ClearMemory {
             clean.Click+=async(s,e)=>{var task=engine.Start("手动清理");RefreshState();await task;RefreshState();};
             save.Click+=(s,e)=>{try{engine.Apply(new Settings{Enabled=engine.Settings.Enabled,TimerEnabled=timerEnabled.Checked,ThresholdEnabled=thresholdEnabled.Checked,IntervalMinutes=(int)minutes.Value,ThresholdGB=(double)threshold.Value});}catch(Exception ex){MessageBox.Show(this,ex.Message,"保存设置");}RefreshState();};
             pause.Click+=(s,e)=>{try{engine.SetEnabled(!engine.Settings.Enabled);}catch(Exception ex){MessageBox.Show(this,ex.Message,"自动清理");}RefreshState();};
-            startup.CheckedChanged+=(s,e)=>{if(syncing||Preview)return;try{Startup.SetEnabled(startup.Checked,Application.ExecutablePath);}catch(Exception ex){syncing=true;startup.Checked=!startup.Checked;syncing=false;MessageBox.Show(this,ex.Message,"自启动设置");}};
+            startup.CheckedChanged+=(s,e)=>{if(syncing||Preview)return;bool wanted=startup.Checked;try{Startup.SetEnabled(wanted,Application.ExecutablePath);}catch(Exception ex){syncing=true;try{startup.Checked=Startup.IsEnabled();}catch{startup.Checked=!wanted;}syncing=false;MessageBox.Show(this,ex.Message,"自启动设置");}};
             FormClosing+=(s,e)=>{if(!AllowExit&&e.CloseReason==CloseReason.UserClosing){e.Cancel=true;Hide();}};
             poll.Tick+=(s,e)=>{engine.Tick();RefreshState();};if(!preview)poll.Start();RefreshState();
         }
         void LoadSettings(){syncing=true;var cfg=engine.Settings;timerEnabled.Checked=cfg.TimerEnabled;thresholdEnabled.Checked=cfg.ThresholdEnabled;minutes.Value=cfg.IntervalMinutes;threshold.Value=(decimal)cfg.ThresholdGB;
-            if(!Preview)try{startup.Checked=Startup.Reconcile(Application.ExecutablePath).Enabled;}catch(Exception ex){engine.Message="自启动状态读取失败："+ex.Message;}
+            if(!Preview)try{startup.Checked=Startup.Reconcile(Application.ExecutablePath).Enabled;}catch(Exception ex){Storage.LogException("startup.reconcile",ex);engine.Message="自启动状态读取失败："+ex.Message;}
             syncing=false;}
         public static string Countdown(long seconds){seconds=Math.Max(0,seconds);return (seconds/3600).ToString("00")+":"+((seconds/60)%60).ToString("00")+":"+(seconds%60).ToString("00");}
         public void RefreshState(){var m=engine.Memory;memory.Text=m.Valid?"已用 "+m.UsedGB.ToString("0.00")+" / "+m.TotalGB.ToString("0.00")+" GB":"内存状态读取失败";
@@ -69,6 +70,7 @@ namespace ClearMemory {
             clean.Enabled=save.Enabled=pause.Enabled=!engine.Busy;status.Text=engine.Message;pause.Text=cfg.Enabled?"暂停自动清理":"恢复自动清理";if(detail.Text!=engine.Details)detail.Text=engine.Details;
         }
         public void Reveal(){Show();WindowState=FormWindowState.Normal;Activate();}
+        public void ExportDiagnostics(){using(var dialog=new SaveFileDialog{Title="导出 ClearMemory 诊断日志",Filter="文本日志 (*.txt)|*.txt",DefaultExt="txt",FileName="ClearMemory-diagnostics-"+DateTime.Now.ToString("yyyyMMdd-HHmmss")+".txt",RestoreDirectory=true}){if(dialog.ShowDialog(this)!=DialogResult.OK)return;try{Diagnostics.Export(dialog.FileName);MessageBox.Show(this,"日志已导出，可将此文件发送给维护者。","导出日志");}catch(Exception ex){Storage.LogException("diagnostics.export",ex);MessageBox.Show(this,"导出失败："+ex.Message,"导出日志");}}}
         public void FitToArea(Rectangle area){if(area.Width<1||area.Height<1)return;MinimumSize=new Size(Math.Min(MinimumSize.Width,area.Width),Math.Min(MinimumSize.Height,area.Height));Size=new Size(Math.Min(Width,area.Width),Math.Min(Height,area.Height));Location=new Point(Math.Max(area.Left,Math.Min(Left,area.Right-Width)),Math.Max(area.Top,Math.Min(Top,area.Bottom-Height)));}
         protected override void OnShown(EventArgs e){base.OnShown(e);if(!Preview)FitToArea(Screen.FromControl(this).WorkingArea);}
         protected override void Dispose(bool disposing){if(disposing)poll.Dispose();base.Dispose(disposing);}
@@ -76,7 +78,7 @@ namespace ClearMemory {
     public sealed class TrayContext:ApplicationContext {
         readonly MainWindow window;readonly NotifyIcon tray;readonly System.Windows.Forms.Timer signalTimer;
         public TrayContext(Engine engine,EventWaitHandle signal,bool background){
-            window=new MainWindow(engine);var menu=new ContextMenuStrip();menu.Items.Add("打开内存清理",null,(s,e)=>window.Reveal());menu.Items.Add("打开日志目录",null,(s,e)=>{Directory.CreateDirectory(Storage.DirectoryPath);Process.Start(new ProcessStartInfo(Storage.DirectoryPath){UseShellExecute=true});});menu.Items.Add("退出",null,(s,e)=>{if(engine.Busy){MessageBox.Show(window,"请等待当前清理结束后退出。","内存清理");return;}ExitThread();});
+            window=new MainWindow(engine);var menu=new ContextMenuStrip();menu.Items.Add("打开内存清理",null,(s,e)=>window.Reveal());menu.Items.Add("导出诊断日志",null,(s,e)=>{window.Reveal();window.ExportDiagnostics();});menu.Items.Add("打开日志目录",null,(s,e)=>{try{Directory.CreateDirectory(Storage.DirectoryPath);Process.Start(new ProcessStartInfo(Storage.DirectoryPath){UseShellExecute=true});}catch(Exception ex){Storage.LogException("diagnostics.open-folder",ex);MessageBox.Show(window,ex.Message,"打开日志目录");}});menu.Items.Add("退出",null,(s,e)=>{if(engine.Busy){MessageBox.Show(window,"请等待当前清理结束后退出。","内存清理");return;}ExitThread();});
             tray=new NotifyIcon{Icon=window.Icon,Text="ClearMemory · 内存清理",ContextMenuStrip=menu,Visible=true};tray.MouseClick+=(s,e)=>{if(e.Button==MouseButtons.Left)window.Reveal();};
             signalTimer=new System.Windows.Forms.Timer{Interval=150};signalTimer.Tick+=(s,e)=>{if(signal.WaitOne(0))window.Reveal();};signalTimer.Start();if(!background)window.Show();
         }
@@ -89,7 +91,7 @@ namespace ClearMemory {
             using(var mutex=new Mutex(true,"Local\\ClearMemory-"+sid,out created))
             using(var signal=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\ClearMemory-Show-"+sid)){
                 if(!created){signal.Set();return;}
-                try{Application.Run(new TrayContext(new Engine(),signal,Array.IndexOf(args,"--background")>=0));}catch(Exception ex){MessageBox.Show(ex.Message,"ClearMemory 无法启动",MessageBoxButtons.OK,MessageBoxIcon.Error);}
+                try{Storage.Log(Diagnostics.Header());Application.Run(new TrayContext(new Engine(),signal,Array.IndexOf(args,"--background")>=0));}catch(Exception ex){Storage.LogException("application.start",ex);MessageBox.Show(ex.Message,"ClearMemory 无法启动",MessageBoxButtons.OK,MessageBoxIcon.Error);}
                 finally{mutex.ReleaseMutex();}
             }
         }

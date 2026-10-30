@@ -27,7 +27,8 @@ namespace ClearMemory
                     new XElement(ns + "StartWhenAvailable", true), new XElement(ns + "Enabled", enabled), new XElement(ns + "ExecutionTimeLimit", "PT0S")),
                 new XElement(ns + "Actions", new XAttribute("Context", "User"), new XElement(ns + "Exec", new XElement(ns + "Command", exe), new XElement(ns + "Arguments", "--background"), new XElement(ns + "WorkingDirectory", Path.GetDirectoryName(exe)))))).ToString();
         }
-        static bool Missing(COMException ex) { return ex.ErrorCode == unchecked((int)0x80070002) || ex.ErrorCode == unchecked((int)0x8004130F); }
+        public static bool IsMissingTaskError(Exception ex) { return ex!=null&&(ex.HResult==unchecked((int)0x80070002)||ex.HResult==unchecked((int)0x8004130F)); }
+        static void CheckTaskName(string name){if(string.IsNullOrEmpty(name)||!name.StartsWith("ClearMemory-",StringComparison.Ordinal)||name.IndexOfAny(new[]{'\\','/'})>=0)throw new ArgumentException("无效的 ClearMemory 任务名。");}
         static void Release(object value) { if (value != null && Marshal.IsComObject(value)) Marshal.FinalReleaseComObject(value); }
         static bool SameUser(string user, string sid) {
             if (string.Equals(user, sid, StringComparison.OrdinalIgnoreCase)) return true;
@@ -74,12 +75,16 @@ namespace ClearMemory
             // Keep the existing task Enabled bit and complete trigger configuration.
             return doc.ToString();
         }
-        public static StartupStatus ReadStatus() {
+        public static StartupStatus ReadStatus(){return ReadStatus(TaskName);}
+        public static StartupStatus ReadStatus(string taskName) {
+            CheckTaskName(taskName);
             dynamic service = null, folder = null, task = null;
             try {
                 service = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service")); service.Connect(); folder = service.GetFolder("\\");
                 try {
-                    task = folder.GetTask(TaskName);
+                    // A missing COM task can be marshaled as FileNotFoundException.
+                    // Only treat a not-found HRESULT from GetTask as normal absence.
+                    try{task = folder.GetTask(taskName);}catch(Exception ex){if(IsMissingTaskError(ex))return new StartupStatus();throw;}
                     XNamespace ns = "http://schemas.microsoft.com/windows/2004/02/mit/task";
                     string xml = (string)task.Xml;
                     var root = XDocument.Parse(xml).Root;
@@ -90,30 +95,39 @@ namespace ClearMemory
                     return new StartupStatus { Exists = true, Enabled = (bool)task.Enabled && HasEnabledLogonTrigger(root, Sid),
                         Xml = xml, Author = registration == null ? null : (string)registration.Element(ns + "Author"),
                         Path = (string)action.Element(ns + "Command"), Arguments = (string)action.Element(ns + "Arguments"), RunLevel = (string)principal.Element(ns + "RunLevel") };
-                } catch (COMException ex) { if (Missing(ex)) return new StartupStatus(); throw; }
+                } catch {throw;}
             } finally { Release(task); Release(folder); Release(service); }
         }
-        public static void SetEnabled(bool enabled, string exe) {
-            var previous = ReadStatus();
-            if (previous.Exists && previous.Author != "ClearMemory") throw new InvalidOperationException("同名计划任务不属于 ClearMemory，未修改。");
-            if (enabled) Register(exe, true); else Delete();
-            Storage.WriteSetting("startup.txt", enabled ? "enabled" : "disabled");
+        public static void SetEnabled(bool enabled, string exe){SetEnabled(enabled,exe,TaskName);}
+        public static void SetEnabled(bool enabled,string exe,string taskName){
+            CheckTaskName(taskName);string stage="读取当前任务";
+            try{
+                Storage.Log("startup.begin enabled="+enabled+" exe="+exe+" exists="+File.Exists(exe));
+                var previous=ReadStatus(taskName);
+                if(previous.Exists&&previous.Author!="ClearMemory")throw new InvalidOperationException("同名计划任务不属于 ClearMemory，未修改。");
+                stage=enabled?"注册登录任务":"删除登录任务";
+                if(enabled){if(!Path.IsPathRooted(exe)||!File.Exists(exe))throw new FileNotFoundException("请先把程序完整解压到固定目录，再开启自启动。",exe);RegisterXml(TaskXml(exe,Sid,true),taskName);}else Delete(taskName);
+                stage="验证任务状态";var current=ReadStatus(taskName);
+                if(enabled?(!current.Exists||!current.Enabled||!string.Equals(current.Path,exe,StringComparison.OrdinalIgnoreCase)||current.Arguments!="--background"||current.RunLevel!="HighestAvailable"):current.Exists)throw new InvalidOperationException("Windows 返回的任务状态与设置不一致。");
+                stage="保存自启动偏好";Storage.WriteSetting("startup.txt",enabled?"enabled":"disabled");Storage.Log("startup.success enabled="+current.Enabled);
+            }catch(Exception ex){Storage.LogException("startup."+stage,ex);throw new InvalidOperationException("自启动设置失败："+stage+"（0x"+unchecked((uint)ex.HResult).ToString("X8")+"）。"+ex.Message+"\n请导出日志用于排查。",ex);}
         }
         static void Register(string exe, bool enabled) {
             RegisterXml(TaskXml(exe, Sid, enabled));
         }
-        static void RegisterXml(string xml) {
+        static void RegisterXml(string xml){RegisterXml(xml,TaskName);}
+        static void RegisterXml(string xml,string taskName) {
             dynamic service = null, folder = null, task = null;
             try {
                 service = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service")); service.Connect(); folder = service.GetFolder("\\");
-                task = folder.RegisterTask(TaskName, xml, 6, Sid, null, 3, null);
+                task = folder.RegisterTask(taskName, xml, 6, Sid, null, 3, null);
             } finally { Release(task); Release(folder); Release(service); }
         }
-        static void Delete() {
+        static void Delete(string taskName) {
             dynamic service = null, folder = null;
             try {
                 service = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service")); service.Connect(); folder = service.GetFolder("\\");
-                try { folder.DeleteTask(TaskName, 0); } catch (COMException ex) { if (!Missing(ex)) throw; }
+                try { folder.DeleteTask(taskName, 0); } catch (Exception ex) { if (!IsMissingTaskError(ex)) throw; }
             } finally { Release(folder); Release(service); }
         }
     }

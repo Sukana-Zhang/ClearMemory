@@ -14,3 +14,7 @@ if($LASTEXITCODE){throw 'Native API contract tests failed'}
 if($LASTEXITCODE){throw 'Compatibility test compilation failed'}
 & .\build\CompatibilityTests.exe
 if($LASTEXITCODE){throw 'Compatibility tests failed'}
+& $taskCompiler /nologo /codepage:65001 /main:StartupDiagnosticsTests /out:build\StartupDiagnosticsTests.exe @taskRefs src\*.cs tests\StartupDiagnosticsTests.cs
+if($LASTEXITCODE){throw 'Startup diagnostics test compilation failed'}
+& .\build\StartupDiagnosticsTests.exe
+if($LASTEXITCODE){throw 'Startup and diagnostics tests failed'}

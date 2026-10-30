@@ -35,6 +35,7 @@ The release ZIP contains only the EXE, README, MIT license, and the EXE's SHA256
 | 达到已用内存阈值 | Enable cleanup when used physical memory reaches the threshold |
 | 暂停自动清理 / 恢复自动清理 | Pause / resume automatic cleanup |
 | 保存设置 | Save settings |
+| 导出日志 / 导出诊断日志 | Export diagnostic logs to a text file |
 | 登录 Windows 后启动 | Start when you sign in to Windows |
 | 打开内存清理 | Open the application from the tray menu |
 | 打开日志目录 | Open the settings and log directory |
@@ -78,6 +79,10 @@ Settings and rotating logs are stored in:
 
 The startup task is named `ClearMemory-<current user SID>`.
 
+Click **导出日志 (Export logs)** in the window or **导出诊断日志 (Export diagnostic logs)** in the tray menu to save one TXT file for troubleshooting. It contains the app and OS versions, elevation status, recent cleanup records, startup operation stages, exception types, and HRESULTs. The current user's profile path and user SIDs are redacted by default. Settings file contents are excluded, and nothing is uploaded automatically.
+
+Alternatively, use **打开日志目录 (Open log directory)** and share `activity.log` plus `activity.previous.log` if present. For startup errors, use a recent version's diagnostic export and describe whether the error occurred on first enabling startup, after moving the EXE, or at sign-in.
+
 To remove ClearMemory, disable **登录 Windows 后启动 (Start when you sign in)**, exit through the tray menu, and delete the extracted application directory. You may also delete the settings directory if you no longer need it.
 
 The EXE is not digitally signed, so Windows may show an unknown publisher. Use a trusted release source and verify the supplied SHA256 checksums.
@@ -95,9 +100,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\verify-package.ps1
 
 The build uses Windows' C# compiler and requires no dependency downloads. Generated files stay in the repository's `build` and `dist` directories. No directory or drive from the author's computer is required. Use `package.ps1 -OutputDirectory <directory>` to choose another package output directory.
 
-Regular verification includes 38 checks for scheduling, settings, startup behavior, and UI initialization; 28 checks for native request structure layouts and failure handling; and 66 checks for invalid configuration, different RAM capacities, numeric cultures, simulated scaling, concurrency, and failure recovery. Package allowlists, SHA256, and extracted-program initialization in a path containing Chinese characters and spaces are also checked. Regular tests do not perform actual system cleanup or register startup tasks.
+Regular verification covers scheduling, configuration, UI initialization, native request structure layouts, failure handling, different RAM capacities, numeric cultures, simulated scaling, concurrency, startup error classification, and diagnostic exports. See CI logs for check counts. Package allowlists, SHA256, and extracted-program initialization in a path containing Chinese characters and spaces are also checked. Regular tests do not perform actual system cleanup or register startup tasks.
 
-The optional `test-startup.ps1` requires an elevated Windows PowerShell. It creates a uniquely named, disabled temporary task to verify Unicode paths, background arguments, and path updates after moving the EXE, then removes the task without launching the application. GitHub CI also runs this integration check.
+The optional `test-startup.ps1` requires an elevated Windows PowerShell. It tests the complete flow: reading an absent task, first-time enable, status verification, path refresh, and disable/removal. Uniquely named temporary tasks are used; enabled-task tests point to a no-op fixture, never the cleanup application. Test tasks are removed afterward. GitHub CI also runs this integration check.
 
 GitHub Actions builds and tests on Windows Server 2022 and 2025. A matching version tag triggers a release after the checks pass. CI verifies build and basic initialization compatibility; it does not establish compatibility with every Windows 10/11 build or hardware configuration. Game frame-time effects have not been benchmarked.
 
